@@ -9,7 +9,6 @@
 #include "Utilities/MathUtils.c"
 
 Q3Map::Q3Map(const std::string& filepath) {
-	_visibleFaces = NULL;
 	_patches = NULL;
 
 	readMap(filepath, _map);
@@ -19,9 +18,7 @@ Q3Map::~Q3Map() {
 	freeMap(_map);
 }
 
-// Walks the BSP tree until a leaf is found and returns the leaf index
-int Q3Map::findLeaf(const float& camPos) const {
-
+int Q3Map::findLeaf() const {
 	int index = 0;
 
 	while (index >= 0) {
@@ -29,7 +26,7 @@ int Q3Map::findLeaf(const float& camPos) const {
 		const TPlane& plane = _map.mPlanes[node.mPlane];
 
 		// Distance from point to a plane
-		const double distance = dotProduct(plane.mNormal, &camPos)
+		const double distance = dotProduct(plane.mNormal, _camera.getPosition())
 				- plane.mDistance;
 
 		if (distance >= 0) {
@@ -42,8 +39,8 @@ int Q3Map::findLeaf(const float& camPos) const {
 	return -index - 1;
 }
 
-// Returns true if the testCluster is potentially visible
-bool Q3Map::isClusterVisible(int visCluster, int testCluster) const {
+bool Q3Map::isClusterVisible(int testCluster) {
+	int visCluster = findCameraCluster();
 
 	if ((_map.mVisData.mBuffer == NULL) || (visCluster < 0)) {
 		return true;
@@ -55,3 +52,30 @@ bool Q3Map::isClusterVisible(int visCluster, int testCluster) const {
 	return (visSet & (1 << (testCluster & 7))) != 0; // (1 << (testCluster & 7)) creates a bit mask that selects bit (testCluster mod 8) within that byte
 }
 
+std::vector<int> Q3Map::findVisibleFaces() {
+	std::vector<int> visibleFaces;
+	std::set<int> alreadyVisibleFaces;
+
+	// Iterate through entire leaf vector
+	for (std::vector<TLeaf>::iterator it = _map.mLeaves.begin();
+			it <= _map.mLeaves.end(); ++it) {
+
+		// Handle only leaves that are potentially visible
+		if (isClusterVisible((*it).mCluster)) {
+
+			// Iterate over all faces that are contained by the leaf
+			for (int i = 0; i < (*it).mNbLeafFaces; ++i) {
+				const int faceIndex = i + (*it).mLeafFace; // The index of the face we are checking next
+
+				// Add face index to the return vector, if it is not already determined visible
+				if (alreadyVisibleFaces.find(faceIndex)
+						!= alreadyVisibleFaces.end()) {
+					alreadyVisibleFaces.insert(faceIndex);
+					visibleFaces.push_back(faceIndex);
+				}
+			}
+		}
+	}
+
+	return visibleFaces;
+}
