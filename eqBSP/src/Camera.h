@@ -25,6 +25,9 @@ public:
 		_position[1] = y;
 		_position[2] = z;
 	}
+
+	// Returns true if the world space bounding box with the specified corners has non-zero intersection with the camera's view frustum
+	bool isVisible(float min[3], float max[3]);
 };
 
 #endif /* CAMERA_H_ */

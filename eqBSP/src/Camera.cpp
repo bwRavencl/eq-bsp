@@ -17,3 +17,8 @@ Camera::~Camera() {
 	// TODO Auto-generated destructor stub
 }
 
+bool Camera::isVisible(float min[3], float max[3]) {
+	// TODO Has to be implemented, camera need access to the view frustum (member?) to do the necessary calculations
+	return true;
+}
+

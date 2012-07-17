@@ -17,16 +17,25 @@ private:
 	TMapQ3 _map;
 	Camera _camera;
 
-	std::set<int> _alreadyVisibleFaces;
-	int *_visibleFaces;
 	TFace *_patches;
+
+	// Walks the BSP tree until a leaf is found and returns the leaf index
+	int findLeaf() const;
+
+	// Returns the index of the cluster containing the camera
+	int findCameraCluster() {
+		return _map.mLeaves.at(findLeaf()).mCluster;
+	}
+
+	// Returns true if the testCluster is potentially visible
+	bool isClusterVisible(int testCluster);
+
+	// Returns a vector with the indices of all potentially visible leaves
+	std::vector<int> findVisibleFaces();
 
 public:
 	Q3Map(const std::string& filepath);
 	virtual ~Q3Map();
-
-	int findLeaf(const float& camPos) const;
-	bool isClusterVisible(int visCluster, int testCluster) const;
 };
 
 #endif /* Q3MAP_H_ */
