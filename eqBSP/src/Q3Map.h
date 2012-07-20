@@ -10,14 +10,22 @@
 
 #include "SimpleQ3Loader/Q3Loader.h"
 #include "Camera.h"
-#include <set>
 
 class Q3Map {
 private:
 	TMapQ3 _map;
 	Camera _camera;
 
-	TFace *_patches;
+	TVertex *_vertices;
+
+	struct Colors {
+		float r;
+		float g;
+		float b;
+		float a;
+	};
+
+	Colors *_facesColors;
 
 	// Walks the BSP tree until a leaf is found and returns the leaf index
 	int findLeaf() const;
@@ -33,9 +41,27 @@ private:
 	// Returns a vector with the indices of all potentially visible leaves
 	std::vector<int> findVisibleFaces();
 
+	// Predicate that sorts faces from front to back
+	bool isInFrontOf(const int faceIndexA, const int faceIndexB);
+
+	// Quicksorts a vector containing face-indices from front to back or back to front
+	void sortFaces(std::vector<int> faces, bool backToFront = false);
+
+	// Renders a polygon
+	void renderPolygon(TFace face);
+
+	// Renders a mesh
+	void renderMesh(TFace face);
+
+	// Renders a Patch
+	void renderPatch(TFace face);
+
 public:
-	Q3Map(const std::string& filepath);
+	Q3Map(const std::string& filepath, Camera &camera);
 	virtual ~Q3Map();
+
+	// Render the map
+	void render();
 };
 
 #endif /* Q3MAP_H_ */
