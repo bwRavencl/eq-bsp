@@ -56,6 +56,8 @@ private:
 	// Renders a Patch
 	void renderPatch(TFace face);
 
+	void renderFaces(std::vector<int> faces);
+
 public:
 	Q3Map(const std::string& filepath, Camera &camera);
 	virtual ~Q3Map();

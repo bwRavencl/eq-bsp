@@ -13,6 +13,13 @@
 #include <boost/bind.hpp>
 #include <algorithm>
 #include <set>
+#include <SDL/SDL.h>
+#include <SDL/SDL_opengl.h>
+
+#define POLYGON 1
+#define PATCH 2
+#define MESH 3
+#define BILLBOARD 4
 
 Q3Map::Q3Map(const std::string& filepath, Camera &camera) {
 	_camera = camera;
@@ -80,7 +87,7 @@ std::vector<int> Q3Map::findVisibleFaces() {
 			it != _map.mLeaves.end(); ++it) {
 
 		// Handle only leaves that are potentially visible
-		if (isClusterVisible((*it).mCluster)) {
+//		if (isClusterVisible((*it).mCluster)) {
 
 			// Iterate over all faces that are contained by the leaf
 			for (int i = 0; i < (*it).mNbLeafFaces; ++i) {
@@ -94,7 +101,7 @@ std::vector<int> Q3Map::findVisibleFaces() {
 					visibleFaces.push_back(faceIndex);
 				}
 			}
-		}
+//		}
 	}
 
 	return visibleFaces;
@@ -137,42 +144,165 @@ bool Q3Map::isInFrontOf(const int faceIndexA, const int faceIndexB) {
 
 void Q3Map::sortFaces(std::vector<int> faces, bool backToFront) {
 	// We need to use a specialized boost functor, to access the non-static predicate function
-	if (backToFront)
-		std::sort(faces.begin(), faces.end(),
-				!boost::bind(&Q3Map::isInFrontOf, this, _1, _2)); // Use the predicate the inverse way
-	else
-		std::sort(faces.begin(), faces.end(),
-				boost::bind(&Q3Map::isInFrontOf, this, _1, _2));
+	std::sort(faces.begin(), faces.end(),
+			boost::bind(&Q3Map::isInFrontOf, this, _1, _2));
+
+	// Reverse order if requested
+	if (backToFront) {
+		faces.reserve(faces.size());
+	}
 }
 
 void Q3Map::renderPolygon(TFace face) {
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
-
 	const int offset = face.mVertex; // Index of first vertex
-	//const TVertex firstVertex = arr[0/*offset*/]; //_map.mVertices.at(offset); // First vertex
 
-	//set array pointers
-	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition)); //&(firstVertex.mPosition));
+	// Set array pointers
+	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition));
 
-	//Draw face
+	// Draw face
 	glDrawArrays(GL_TRIANGLE_FAN, offset, face.mNbVertices);
 }
 
 void Q3Map::renderMesh(TFace face) {
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
+	const TVertex firstVertex = _vertices[0]; // First vertex
 
-	const TVertex firstVertex = _vertices[0/*offset*/]; //_map.mVertices.at(offset); // First vertex
-
-//	std::cout << "Rendering Mesh Vertex at: " << firstVertex.mPosition[0] << " " << firstVertex.mPosition[1] << " " << firstVertex.mPosition[2] << std::endl;
-
-	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition)); //&(firstVertex.mPosition));
+	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition));
 
 	glDrawElements(GL_TRIANGLES, face.mNbMeshVertices, GL_UNSIGNED_INT,
 			&_map.mMeshVertices.at(face.mMeshVertex));
 }
 
 void Q3Map::renderPatch(TFace face) {
-	// TODO Implement Rendering code
+	// Teseselate
+
+	const int level = 5;
+
+	// The number of vertices along a side is 1 + num edges
+	const int l1 = level + 1;
+
+	TVertex vertices[l1 * l1];
+
+	int i;
+
+	TVertex controls[9];
+
+	// Gather controls
+	for (i = 0; i < face.mNbVertices; ++i) {
+		controls[i] = _vertices[face.mVertex + i];
+	}
+
+	// Compute the vertices
+
+	for (i = 0; i <= level; ++i) {
+		double a = (double) i / level;
+		double b = 1 - a;
+
+		vertices[i] = vertexAddition(
+				vertexAddition(vertexMultiplication(controls[0], (b * b)),
+						vertexMultiplication(controls[3], (2 * b * a))),
+				vertexMultiplication(controls[6], (a * a)));
+	}
+
+	for (i = 1; i <= level; ++i) {
+		double a = (double) i / level;
+		double b = 1.0 - a;
+
+		TVertex temp[3];
+
+		int j;
+		for (j = 0; j < 3; ++j) {
+			int k = 3 * j;
+			temp[j] = vertexAddition(
+					vertexAddition(
+							vertexMultiplication(controls[k + 0], (b * b)),
+							vertexMultiplication(controls[k + 1], (2 * b * a))),
+					vertexMultiplication(controls[k + 2], (a * a)));
+		}
+
+		for (j = 0; j <= level; ++j) {
+			double a = (double) j / level;
+			double b = 1.0 - a;
+
+			vertices[i * l1 + j] = vertexAddition(
+					vertexAddition(vertexMultiplication(temp[0], (b * b)),
+							vertexMultiplication(temp[1], (2 * b * a))),
+					vertexMultiplication(temp[2], (a * a)));
+		}
+	}
+
+// Compute the indices
+	int row;
+	int indices[(level * (level + 1) * 2)];
+
+	for (row = 0; row < level; ++row) {
+		for (int col = 0; col <= level; ++col) {
+			indices[(row * (level + 1) + col) * 2 + 1] = row * l1 + col;
+			indices[(row * (level + 1) + col) * 2] = (row + 1) * l1 + col;
+		}
+	}
+
+	int trianglesPerRow[level];
+	int *rowIndices[level];
+
+	for (row = 0; row < level; ++row) {
+		trianglesPerRow[row] = 2 * l1;
+		rowIndices[row] = &indices[row * 2 * l1];
+	}
+
+	glVertexPointer(3, GL_FLOAT, sizeof(TVertex), &vertices[0].mPosition);
+
+//    glClientActiveTextureARB(GL_TEXTURE0_ARB);
+//    glTexCoordPointer(2, GL_FLOAT,sizeof(BSPVertex), &vertex[0].textureCoord);
+//
+//    glClientActiveTextureARB(GL_TEXTURE1_ARB);
+//    glTexCoordPointer(2, GL_FLOAT, sizeof(BSPVertex), &vertex[0].lightmapCoord);
+
+	typedef void (APIENTRY *glMultiDrawElementsEXT_func)(GLenum mode,
+			GLsizei *count, GLenum type, const GLvoid** indices,
+			GLsizei primcount);
+	glMultiDrawElementsEXT_func glMultiDrawElementsEXT =
+			(glMultiDrawElementsEXT_func) SDL_GL_GetProcAddress(
+					"glMultiDrawElementsEXT");
+
+	glMultiDrawElementsEXT(GL_TRIANGLE_STRIP, trianglesPerRow, GL_UNSIGNED_INT,
+			(const void **) (rowIndices), level);
+}
+
+void Q3Map::renderFaces(std::vector<int> faces) {
+	std::vector<int>::iterator it;
+	TFace curFace;
+	unsigned int colorI = 0;
+
+	for (it = faces.begin(); it != faces.end(); ++it) {
+		curFace = _map.mFaces.at((*it));
+
+		// TODO Render Textures
+		// const TTexture texture = _map.mTextures.at(curFace.mTextureIndex);
+		// glBindTexture()
+
+		glColor4f(_facesColors[colorI].r, _facesColors[colorI].g,
+				_facesColors[colorI].b, _facesColors[colorI].a);
+
+		switch (curFace.mType) {
+		case POLYGON:
+			renderPolygon(curFace);
+			break;
+		case MESH:
+			renderMesh(curFace);
+			break;
+		case PATCH:
+			renderPatch(curFace);
+			break;
+		case BILLBOARD:
+			break;
+		default:
+			break;
+		}
+
+		colorI++;
+	}
 }
 
 void Q3Map::render() {
@@ -180,71 +310,42 @@ void Q3Map::render() {
 	std::vector<int> opaqueFaces;
 	std::vector<int> transparentFaces;
 	std::vector<int>::iterator it;
-	TFace curFace;
 
-	// Partition visible faces in opaque and transparent lists
+// Partition visible faces in opaque and transparent lists
 	for (it = visibleFaces.begin(); it != visibleFaces.end(); ++it) {
 		//curFace = _map.mFaces.at((*it));
 		// TODO do actual check for opacity or transparency
 		opaqueFaces.push_back(*it);
 	}
 
-//	std::cout << "Global Faces:\t\t" << _map.mFaces.size() << std::endl << "Opaque Faces:\t\t" << opaqueFaces.size() << std::endl << "Transparent Faces:\t" << transparentFaces.size() << std::endl;
-//	for (it = opaqueFaces.begin(); it != opaqueFaces.end(); ++it) {
-//		std::cout << "FaceIndex: " << (*it) << std::endl;
-//	}
+// Sort opaque faces front to back
+	sortFaces(opaqueFaces, false);
 
-	// Sort opaque faces front to back
-	sortFaces(opaqueFaces);
-
-	// Sort transparent faces back to front
+// Sort transparent faces back to front
 	sortFaces(transparentFaces, true);
 
-	// Turn whole map, so that it is positioned in the right way
+// Turn whole map, so that it is positioned in the right way
 	glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
 
 	glFrontFace(GL_CW);
 
-	// Enable vertex arrays
+// Enable vertex arrays
 	glEnableClientState(GL_VERTEX_ARRAY);
 //	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
 //	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 //	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 //	glClientActiveTextureARB(GL_TEXTURE0_ARB);
 
-	// Render opaque faces
+// Render opaque faces
+	renderFaces(opaqueFaces);
 
-	unsigned int colorI = 0;
+// Render transparent faces
+	renderFaces(transparentFaces);
 
-	for (it = opaqueFaces.begin(); it != opaqueFaces.end(); ++it) {
-		curFace = _map.mFaces.at((*it));
-
-		// TODO Render Textures
-		// const TTexture texture = _map.mTextures.at(curFace.mTextureIndex);
-		// glBindTexture()
-
-		glColor4f(_facesColors[colorI].r, _facesColors[colorI].g, _facesColors[colorI].b, _facesColors[colorI].a);
-
-		switch (curFace.mType) {
-		case 1:
-			renderPolygon(curFace);
-		case 3:
-			renderMesh(curFace);
-		case 4:
-			renderPatch(curFace);
-		}
-
-		colorI++;
-	}
-
-	// TODO Render transparent faces
-
-	// Disable vertex arrays
+// Disable vertex arrays
 //	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 //	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 //	glClientActiveTextureARB(GL_TEXTURE0_ARB);
-//
 //	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 	glDisableClientState(GL_VERTEX_ARRAY);
 

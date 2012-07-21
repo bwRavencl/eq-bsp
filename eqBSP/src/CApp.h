@@ -16,7 +16,7 @@
 
 class CApp {
 private:
-	bool Running;
+	bool _running;
 
 	SDL_Surface* Surf_Display;
 

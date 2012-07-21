@@ -7,10 +7,15 @@
 
 #include "CApp.h"
 
-#define windowWidth 1680
-#define windowHeight 1050
+#define WINDOW_WIDTH 1680
+#define WINDOW_HEIGHT 1050
+
+#define HEAD_SENSITIVITY 3.0f
+#define MOVEMENT_SPEED 4.0f
 
 CApp::CApp() {
+	_running = true;
+
 	Surf_Display = NULL;
 
 	_map = NULL;
@@ -29,8 +34,6 @@ CApp::CApp() {
 	_moveDown = false;
 
 	_wireframeEnabled = false;
-
-	Running = true;
 }
 
 bool CApp::OnInit() {
@@ -38,18 +41,18 @@ bool CApp::OnInit() {
 		return false;
 	}
 
-	if ((Surf_Display = SDL_SetVideoMode(windowWidth, windowHeight, 32,
+	if ((Surf_Display = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32,
 			SDL_HWSURFACE | SDL_OPENGL)) == NULL) {
 		return false;
 	}
 
 	glClearColor(0, 0, 0, 0);
 
-	glViewport(0, 0, windowWidth, windowHeight);
+	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(75.0f, (GLfloat) windowWidth / (GLfloat) windowHeight, 0.1f, 1000.0f);
+	gluPerspective(75.0f, (GLfloat) WINDOW_WIDTH / (GLfloat) WINDOW_HEIGHT, 0.1f, 10000.0f);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -69,7 +72,7 @@ bool CApp::OnInit() {
 	glEnable(GL_CULL_FACE);
 
 	_camera = new Camera();
-	_map = new Q3Map("examples/maps/final.bsp", *_camera);
+	_map = new Q3Map("/home/matteo/tmp/maps/q3dm17.bsp", *_camera);
 
 	return true;
 }
@@ -110,6 +113,10 @@ void CApp::OnEvent(SDL_Event* event) {
 			else
 				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
+
+		if (event->key.keysym.sym == SDLK_ESCAPE) {
+			_running = false;
+		}
 	}
 
 	if (event->type == SDL_KEYUP) {
@@ -139,32 +146,32 @@ void CApp::OnEvent(SDL_Event* event) {
 	}
 
 	if (event->type == SDL_QUIT) {
-		Running = false;
+		_running = false;
 	}
 }
 
 void CApp::OnLoop() {
 	if (_lookUp)
-		_camera->lookUp(1.0f);
+		_camera->lookUp(HEAD_SENSITIVITY);
 	if (_lookDown)
-		_camera->lookDown(1.0f);
+		_camera->lookDown(HEAD_SENSITIVITY);
 	if (_turnLeft)
-		_camera->turnLeft(1.0f);
+		_camera->turnLeft(HEAD_SENSITIVITY);
 	if (_turnRight)
-		_camera->turnRight(1.0f);
+		_camera->turnRight(HEAD_SENSITIVITY);
 
 	if (_walkForeward)
-		_camera->walkForeward(1.0f);
+		_camera->walkForeward(MOVEMENT_SPEED);
 	if (_walkBackward)
-		_camera->walkBackward(1.0f);
+		_camera->walkBackward(MOVEMENT_SPEED);
 	if (_strafeLeft)
-		_camera->strafeLeft(1.0f);
+		_camera->strafeLeft(MOVEMENT_SPEED);
 	if (_strafeRight)
-		_camera->strafeRight(1.0f);
+		_camera->strafeRight(MOVEMENT_SPEED);
 	if (_moveUp)
-		_camera->moveUp(1.0f);
+		_camera->moveUp(MOVEMENT_SPEED);
 	if (_moveDown)
-		_camera->moveDown(1.0f);
+		_camera->moveDown(MOVEMENT_SPEED);
 }
 
 void CApp::OnRender() {
@@ -174,8 +181,6 @@ void CApp::OnRender() {
 	_camera->render();
 
 	glPushAttrib(GL_ALL_ATTRIB_BITS);
-
-	//glScalef(0.1f, 0.1f, 0.1f);
 
 	_map->render();
 
@@ -195,7 +200,7 @@ int CApp::OnExecute() {
 
 	SDL_Event Event;
 
-	while (Running) {
+	while (_running) {
 		while (SDL_PollEvent(&Event)) {
 			OnEvent(&Event);
 		}
