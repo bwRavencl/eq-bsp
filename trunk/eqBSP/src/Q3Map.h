@@ -10,6 +10,7 @@
 
 #include "SimpleQ3Loader/Q3Loader.h"
 #include "Camera.h"
+#include <GL/gl.h>
 
 class Q3Map {
 private:
@@ -17,6 +18,11 @@ private:
 	Camera _camera;
 
 	TVertex *_vertices;
+	int *_meshVertices;
+
+	GLuint *_textures;
+	GLuint *_lightmaps;
+	GLuint _whiteTexture; //used if no lightmap specified
 
 	struct Colors {
 		float r;

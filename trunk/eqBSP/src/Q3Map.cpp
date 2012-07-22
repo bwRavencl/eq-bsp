@@ -5,32 +5,86 @@
  *      Author: matteo
  */
 
+#define POLYGON 1
+#define PATCH 2
+#define MESH 3
+#define BILLBOARD 4
+
 #include "Q3Map.h"
 #include "Utilities/MathUtils.h"
+#include "Utilities/OpenGLExtensions.h"
+#include "Utilities/TextureLoader.h"
 #include "Matrices/Matrices.h"
 #include <valarray>
 #include <GL/gl.h>
 #include <boost/bind.hpp>
 #include <algorithm>
 #include <set>
-#include <SDL/SDL.h>
-#include <SDL/SDL_opengl.h>
 
-#define POLYGON 1
-#define PATCH 2
-#define MESH 3
-#define BILLBOARD 4
+const std::string basePath = "/home/matteo/tmp/baseq3a/";
+const unsigned char gray[1][1][3] = {{{128, 128, 128}}};
 
 Q3Map::Q3Map(const std::string& filepath, Camera &camera) {
+	unsigned int i;
 	_camera = camera;
+
+	// Read the map
 	readMap(filepath, _map);
 
 	// We need to have the vertices in a simple array to draw them
 	_vertices = new TVertex[_map.mVertices.size()];
 	copy(_map.mVertices.begin(), _map.mVertices.end(), _vertices);
 
+	// We need to have the mesh vertices in a simple array to draw them
+	_meshVertices = new int[_map.mMeshVertices.size()];
+
+	for (i = 0; i < _map.mMeshVertices.size(); i++) {
+		_meshVertices[i] = _map.mMeshVertices.at(i).mMeshVert;
+	}
+
+	// Load textures
+	_textures = new GLuint[_map.mTextures.size()];
+	for (i = 0; i < _map.mTextures.size(); i++) {
+		_textures[i] = loadTexture(
+				basePath + _map.mTextures.at(i).mName + ".jpg");
+	}
+
+	// Load lightmaps
+	int numberOfLightmaps = _map.mLightMaps.size();
+	_lightmaps = new GLuint[numberOfLightmaps];
+
+	// Generate the lightmap identifiers
+	glGenTextures(numberOfLightmaps, _lightmaps);
+
+	for (int i = 0; i < numberOfLightmaps; ++i) {
+		glBindTexture(GL_TEXTURE_2D, _lightmaps[i]);
+
+		//Create texture
+		gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA8, 128, 128, GL_RGB,
+				GL_UNSIGNED_BYTE, _map.mLightMaps.at(i).mMapData);
+
+		//Set Parameters
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+				GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	}
+
+	// Create white texture for if no lightmap specified
+	glGenTextures(1, &_whiteTexture);
+	glBindTexture(GL_TEXTURE_2D, _whiteTexture);
+	//Create texture
+	gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA8, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, &gray);
+	//Set Parameters
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+			GL_LINEAR_MIPMAP_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
 	_facesColors = new Colors[_map.mFaces.size()];
-	for (unsigned int i = 0; i < _map.mFaces.size(); i++) {
+	for (i = 0; i < _map.mFaces.size(); i++) {
 		struct Colors c;
 		c.r = 1 - (float) rand() / RAND_MAX;
 		c.g = 1 - (float) rand() / RAND_MAX;
@@ -82,25 +136,25 @@ std::vector<int> Q3Map::findVisibleFaces() {
 	std::vector<int> visibleFaces;
 	std::set<int> alreadyVisibleFaces;
 
-	// Iterate through entire leaf vector
+// Iterate through entire leaf vector
 	for (std::vector<TLeaf>::iterator it = _map.mLeaves.begin();
 			it != _map.mLeaves.end(); ++it) {
 
 		// Handle only leaves that are potentially visible
 //		if (isClusterVisible((*it).mCluster)) {
 
-			// Iterate over all faces that are contained by the leaf
-			for (int i = 0; i < (*it).mNbLeafFaces; ++i) {
-				const int faceIndex =
-						_map.mLeafFaces.at((*it).mLeafFace + i).mFaceIndex; // The index of the face we are checking next
+		// Iterate over all faces that are contained by the leaf
+		for (int i = 0; i < (*it).mNbLeafFaces; ++i) {
+			const int faceIndex =
+					_map.mLeafFaces.at((*it).mLeafFace + i).mFaceIndex; // The index of the face we are checking next
 
-				// Add face index to the return vector, if it is not already determined visible
-				if (alreadyVisibleFaces.find(faceIndex)
-						== alreadyVisibleFaces.end()) {
-					alreadyVisibleFaces.insert(faceIndex);
-					visibleFaces.push_back(faceIndex);
-				}
+			// Add face index to the return vector, if it is not already determined visible
+			if (alreadyVisibleFaces.find(faceIndex)
+					== alreadyVisibleFaces.end()) {
+				alreadyVisibleFaces.insert(faceIndex);
+				visibleFaces.push_back(faceIndex);
 			}
+		}
 //		}
 	}
 
@@ -143,11 +197,11 @@ bool Q3Map::isInFrontOf(const int faceIndexA, const int faceIndexB) {
 }
 
 void Q3Map::sortFaces(std::vector<int> faces, bool backToFront) {
-	// We need to use a specialized boost functor, to access the non-static predicate function
+// We need to use a specialized boost functor, to access the non-static predicate function
 	std::sort(faces.begin(), faces.end(),
 			boost::bind(&Q3Map::isInFrontOf, this, _1, _2));
 
-	// Reverse order if requested
+// Reverse order if requested
 	if (backToFront) {
 		faces.reserve(faces.size());
 	}
@@ -157,29 +211,83 @@ void Q3Map::renderPolygon(TFace face) {
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 	const int offset = face.mVertex; // Index of first vertex
 
-	// Set array pointers
+// Set array pointers
+// Vertices
 	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition));
 
-	// Draw face
+// Texture
+	glTexCoordPointer(2, GL_FLOAT, stride, &_vertices[0].mTexCoord[0]);
+
+// Lightmap
+	glClientActiveTextureARB(GL_TEXTURE1_ARB);
+	glTexCoordPointer(2, GL_FLOAT, stride, &_vertices[0].mTexCoord[1]);
+	glClientActiveTextureARB(GL_TEXTURE0_ARB);
+
+// Bind textures
+// Texture
+	if (_textures[face.mTextureIndex])
+		glBindTexture(GL_TEXTURE_2D, _textures[face.mTextureIndex]);
+
+// Lightmap
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	if (face.mLightmapIndex >= 0)	//only bind a lightmap if one exists
+		glBindTexture(GL_TEXTURE_2D, _lightmaps[face.mLightmapIndex]);
+	else
+		glBindTexture(GL_TEXTURE_2D, _whiteTexture);
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+
+// Draw face
 	glDrawArrays(GL_TRIANGLE_FAN, offset, face.mNbVertices);
 }
 
 void Q3Map::renderMesh(TFace face) {
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
-	const TVertex firstVertex = _vertices[0]; // First vertex
 
-	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition));
+// Set array pointers
+// Vertices
+	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[face.mVertex].mPosition));
 
-	glDrawElements(GL_TRIANGLES, face.mNbMeshVertices, GL_UNSIGNED_INT,
-			&_map.mMeshVertices.at(face.mMeshVertex));
+// Texture
+	glTexCoordPointer(2, GL_FLOAT, stride,
+			&_vertices[face.mVertex].mTexCoord[0]);
+
+// Lightmap
+	glClientActiveTextureARB(GL_TEXTURE1_ARB);
+	glTexCoordPointer(2, GL_FLOAT, stride,
+			&_vertices[face.mVertex].mTexCoord[1]);
+	glClientActiveTextureARB(GL_TEXTURE0_ARB);
+
+// Bind textures
+// Texture
+	if (_textures[face.mTextureIndex])
+		glBindTexture(GL_TEXTURE_2D, _textures[face.mTextureIndex]);
+
+// Lightmap
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	if (face.mLightmapIndex >= 0)	//only bind a lightmap if one exists
+		glBindTexture(GL_TEXTURE_2D, _lightmaps[face.mLightmapIndex]);
+	else
+		glBindTexture(GL_TEXTURE_2D, _whiteTexture);
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+
+//	glDrawElements(GL_TRIANGLES, face.mNbMeshVertices, GL_UNSIGNED_INT,
+//			&_meshVertices[face.mMeshVertex]);
+
+	glDrawRangeElementsEXT(GL_TRIANGLES, 0, face.mNbVertices,
+			face.mNbMeshVertices, GL_UNSIGNED_INT,
+			(const void**) (&_meshVertices[face.mMeshVertex]));
 }
 
 void Q3Map::renderPatch(TFace face) {
+	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
+
 	// Teseselate
 
 	const int level = 5;
 
-	// The number of vertices along a side is 1 + num edges
+// The number of vertices along a side is 1 + num edges
 	const int l1 = level + 1;
 
 	TVertex vertices[l1 * l1];
@@ -188,12 +296,12 @@ void Q3Map::renderPatch(TFace face) {
 
 	TVertex controls[9];
 
-	// Gather controls
+// Gather controls
 	for (i = 0; i < face.mNbVertices; ++i) {
 		controls[i] = _vertices[face.mVertex + i];
 	}
 
-	// Compute the vertices
+// Compute the vertices
 
 	for (i = 0; i <= level; ++i) {
 		double a = (double) i / level;
@@ -251,20 +359,13 @@ void Q3Map::renderPatch(TFace face) {
 		rowIndices[row] = &indices[row * 2 * l1];
 	}
 
-	glVertexPointer(3, GL_FLOAT, sizeof(TVertex), &vertices[0].mPosition);
+	glVertexPointer(3, GL_FLOAT, stride, &vertices[0].mPosition);
 
-//    glClientActiveTextureARB(GL_TEXTURE0_ARB);
-//    glTexCoordPointer(2, GL_FLOAT,sizeof(BSPVertex), &vertex[0].textureCoord);
-//
-//    glClientActiveTextureARB(GL_TEXTURE1_ARB);
-//    glTexCoordPointer(2, GL_FLOAT, sizeof(BSPVertex), &vertex[0].lightmapCoord);
+	glClientActiveTextureARB(GL_TEXTURE0_ARB);
+	//glTexCoordPointer(2, GL_FLOAT, stride, &vertices[0].mTexCoord[0]); // Texture
 
-	typedef void (APIENTRY *glMultiDrawElementsEXT_func)(GLenum mode,
-			GLsizei *count, GLenum type, const GLvoid** indices,
-			GLsizei primcount);
-	glMultiDrawElementsEXT_func glMultiDrawElementsEXT =
-			(glMultiDrawElementsEXT_func) SDL_GL_GetProcAddress(
-					"glMultiDrawElementsEXT");
+	glClientActiveTextureARB(GL_TEXTURE1_ARB);
+	//glTexCoordPointer(2, GL_FLOAT, stride, &vertices[0].mTexCoord[1]); // Lightmap
 
 	glMultiDrawElementsEXT(GL_TRIANGLE_STRIP, trianglesPerRow, GL_UNSIGNED_INT,
 			(const void **) (rowIndices), level);
@@ -278,12 +379,8 @@ void Q3Map::renderFaces(std::vector<int> faces) {
 	for (it = faces.begin(); it != faces.end(); ++it) {
 		curFace = _map.mFaces.at((*it));
 
-		// TODO Render Textures
-		// const TTexture texture = _map.mTextures.at(curFace.mTextureIndex);
-		// glBindTexture()
-
-		glColor4f(_facesColors[colorI].r, _facesColors[colorI].g,
-				_facesColors[colorI].b, _facesColors[colorI].a);
+//		glColor4f(_facesColors[colorI].r, _facesColors[colorI].g,
+//				_facesColors[colorI].b, _facesColors[colorI].a);
 
 		switch (curFace.mType) {
 		case POLYGON:
@@ -331,10 +428,10 @@ void Q3Map::render() {
 
 // Enable vertex arrays
 	glEnableClientState(GL_VERTEX_ARRAY);
-//	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-//	glClientActiveTextureARB(GL_TEXTURE1_ARB);
-//	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-//	glClientActiveTextureARB(GL_TEXTURE0_ARB);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glClientActiveTextureARB(GL_TEXTURE1_ARB);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glClientActiveTextureARB(GL_TEXTURE0_ARB);
 
 // Render opaque faces
 	renderFaces(opaqueFaces);
@@ -343,10 +440,10 @@ void Q3Map::render() {
 	renderFaces(transparentFaces);
 
 // Disable vertex arrays
-//	glClientActiveTextureARB(GL_TEXTURE1_ARB);
-//	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-//	glClientActiveTextureARB(GL_TEXTURE0_ARB);
-//	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glClientActiveTextureARB(GL_TEXTURE1_ARB);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glClientActiveTextureARB(GL_TEXTURE0_ARB);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 	glDisableClientState(GL_VERTEX_ARRAY);
 
 	glFrontFace(GL_CCW);
