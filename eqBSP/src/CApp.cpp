@@ -5,13 +5,14 @@
  *      Author: matteo
  */
 
-#include "CApp.h"
-
 #define WINDOW_WIDTH 1680
 #define WINDOW_HEIGHT 1050
 
 #define HEAD_SENSITIVITY 3.0f
 #define MOVEMENT_SPEED 4.0f
+
+#include "CApp.h"
+#include "Utilities/OpenGLExtensions.h"
 
 CApp::CApp() {
 	_running = true;
@@ -46,6 +47,11 @@ bool CApp::OnInit() {
 		return false;
 	}
 
+	if(!prepareOpenGLExtensions()) {
+		std::cout << "Error: Required OpenGL extensions not supported!" << std::endl;
+		return false;
+	}
+
 	glClearColor(0, 0, 0, 0);
 
 	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -72,7 +78,7 @@ bool CApp::OnInit() {
 	glEnable(GL_CULL_FACE);
 
 	_camera = new Camera();
-	_map = new Q3Map("/home/matteo/tmp/maps/q3dm17.bsp", *_camera);
+	_map = new Q3Map("/home/matteo/tmp/baseq3a/maps/q3dm17.bsp", *_camera);
 
 	return true;
 }
@@ -181,6 +187,52 @@ void CApp::OnRender() {
 	_camera->render();
 
 	glPushAttrib(GL_ALL_ATTRIB_BITS);
+
+	//Unit 0 - replace with decal textures
+	glEnable(GL_TEXTURE_2D);
+
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+
+	//Unit 1
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	glEnable(GL_TEXTURE_2D);
+
+//	if(renderMethod==MODULATE_TEXTURES)	//Then modulate by lightmap, then double
+//	{
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_PREVIOUS_EXT);
+		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_MODULATE);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_RGB_EXT, GL_TEXTURE);
+		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_EXT, GL_SRC_COLOR);
+
+		glTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE_EXT, 2.0f);
+//	}
+//
+//	if(renderMethod==SHOW_TEXTURES)	//Then replace with previous
+//	{
+//		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
+//
+//		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_PREVIOUS_EXT);
+//		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
+//
+//		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_REPLACE);
+//	}
+//
+//	if(renderMethod==SHOW_LIGHTMAPS)//Then replace with lightmaps
+//	{
+//		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
+//
+//		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_TEXTURE);
+//		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
+//
+//		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_REPLACE);
+//	}
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
 
 	_map->render();
 
