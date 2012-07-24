@@ -14,11 +14,19 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 
+enum TextureMode {
+	TEXTURES_AND_LIGHTMAPS,
+	TEXTURES_ONLY,
+	LIGHTMAPS_ONLY
+};
+
 class CApp {
 private:
+	std::string _filePath;
+
 	bool _running;
 
-	SDL_Surface* Surf_Display;
+	SDL_Surface* _surfDisplay;
 
 	Camera* _camera;
 	Q3Map* _map;
@@ -36,6 +44,8 @@ private:
 	bool _moveDown;
 
 	bool _wireframeEnabled;
+
+	TextureMode _textureMode;
 
 public:
 	CApp();

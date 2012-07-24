@@ -5,6 +5,10 @@
  *      Author: matteo
  */
 
+#define SKYBOX_SIZE 4096.0f
+
+#define	SURF_SKY 0x4
+
 #define POLYGON 1
 #define PATCH 2
 #define MESH 3
@@ -21,10 +25,10 @@
 #include <algorithm>
 #include <set>
 
-const std::string basePath = "/home/matteo/tmp/baseq3a/";
-const unsigned char gray[1][1][3] = {{{128, 128, 128}}};
+static const std::string basePath = "/home/matteo/tmp/baseq3a/";
+static const unsigned char gray[1][1][3] = { { { 128, 128, 128 } } };
 
-Q3Map::Q3Map(const std::string& filepath, Camera &camera) {
+Q3Map::Q3Map(const std::string& filepath, Camera *camera) {
 	unsigned int i;
 	_camera = camera;
 
@@ -47,6 +51,8 @@ Q3Map::Q3Map(const std::string& filepath, Camera &camera) {
 	for (i = 0; i < _map.mTextures.size(); i++) {
 		_textures[i] = loadTexture(
 				basePath + _map.mTextures.at(i).mName + ".jpg");
+		if (!_textures[i])
+			loadTexture(basePath + _map.mTextures.at(i).mName + ".tga");
 	}
 
 	// Load lightmaps
@@ -75,7 +81,8 @@ Q3Map::Q3Map(const std::string& filepath, Camera &camera) {
 	glGenTextures(1, &_whiteTexture);
 	glBindTexture(GL_TEXTURE_2D, _whiteTexture);
 	//Create texture
-	gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA8, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, &gray);
+	gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA8, 1, 1, GL_RGB, GL_UNSIGNED_BYTE,
+			&gray);
 	//Set Parameters
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
 			GL_LINEAR_MIPMAP_LINEAR);
@@ -83,15 +90,15 @@ Q3Map::Q3Map(const std::string& filepath, Camera &camera) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-	_facesColors = new Colors[_map.mFaces.size()];
-	for (i = 0; i < _map.mFaces.size(); i++) {
-		struct Colors c;
-		c.r = 1 - (float) rand() / RAND_MAX;
-		c.g = 1 - (float) rand() / RAND_MAX;
-		c.b = 1 - (float) rand() / RAND_MAX;
-		c.a = 1 - (float) rand() / RAND_MAX;
-		_facesColors[i] = c;
+	std::string skyTextureName = "";
+	for (std::vector<TTexture>::iterator it = _map.mTextures.begin();
+			it != _map.mTextures.end(); ++it) {
+		if ((*it).mFlags & 0x4) {
+			skyTextureName = (*it).mName;
+			break;
+		}
 	}
+	_skyTexture = loadTexture(basePath + "textures/skies/pjbasesky.jpg");
 }
 
 Q3Map::~Q3Map() {
@@ -106,8 +113,8 @@ int Q3Map::findLeaf() const {
 		const TPlane& plane = _map.mPlanes[node.mPlane];
 
 		// Distance from point to a plane
-		const double distance = dotProduct(plane.mNormal, _camera.getPosition())
-				- plane.mDistance;
+		const double distance = dotProduct(plane.mNormal,
+				_camera->getPosition()) - plane.mDistance;
 
 		if (distance >= 0) {
 			index = node.mChildren[0]; // Index of Child in front
@@ -180,7 +187,7 @@ bool Q3Map::isInFrontOf(const int faceIndexA, const int faceIndexB) {
 			translationVectorB[0], 0.0f, 1.0f, 0.0f, translationVectorB[1],
 			0.0f, 0.0f, 1.0f, translationVectorB[2], 0.0f, 0.0f, 0.0f, 1.0f);
 
-	const Matrix4 cameraMatrix = _camera.getViewMatrix();
+	const Matrix4 cameraMatrix = _camera->getViewMatrix();
 
 	const Matrix4 modelViewMatrixA = worldToCameraSpace(modelMatrixA,
 			cameraMatrix);
@@ -208,6 +215,9 @@ void Q3Map::sortFaces(std::vector<int> faces, bool backToFront) {
 }
 
 void Q3Map::renderPolygon(TFace face) {
+	if (_textures[face.mTextureIndex] == false)
+		return;
+
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 	const int offset = face.mVertex; // Index of first vertex
 
@@ -242,6 +252,9 @@ void Q3Map::renderPolygon(TFace face) {
 }
 
 void Q3Map::renderMesh(TFace face) {
+	if (_textures[face.mTextureIndex] == false)
+		return;
+
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 
 // Set array pointers
@@ -281,6 +294,9 @@ void Q3Map::renderMesh(TFace face) {
 }
 
 void Q3Map::renderPatch(TFace face) {
+	if (_textures[face.mTextureIndex] == false)
+		return;
+
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 
 	// Teseselate
@@ -379,9 +395,6 @@ void Q3Map::renderFaces(std::vector<int> faces) {
 	for (it = faces.begin(); it != faces.end(); ++it) {
 		curFace = _map.mFaces.at((*it));
 
-//		glColor4f(_facesColors[colorI].r, _facesColors[colorI].g,
-//				_facesColors[colorI].b, _facesColors[colorI].a);
-
 		switch (curFace.mType) {
 		case POLYGON:
 			renderPolygon(curFace);
@@ -402,7 +415,112 @@ void Q3Map::renderFaces(std::vector<int> faces) {
 	}
 }
 
+void Q3Map::renderSkybox() {
+	if (_skyTexture == false)
+		return;
+
+	glPushMatrix();
+	glLoadIdentity();
+
+	glRotatef(_camera->getRotation()[0], 1.0f, 0.0f, 0.0f);
+	glRotatef(_camera->getRotation()[1], 0.0f, 1.0f, 0.0f);
+	glRotatef(_camera->getRotation()[2], 0.0f, 0.0f, 1.0f);
+
+	// Enable/Disable features
+	glPushAttrib(GL_ENABLE_BIT);
+	glEnable(GL_TEXTURE_2D);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
+
+	// Just in case we set all vertices to white.
+	glColor4f(1, 1, 1, 1);
+
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, _skyTexture);
+
+	// Render the front quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex3f(SKYBOX_SIZE, -SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(1, 0);
+	glVertex3f(-SKYBOX_SIZE, -SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(1, 1);
+	glVertex3f(-SKYBOX_SIZE, SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(0, 1);
+	glVertex3f(SKYBOX_SIZE, SKYBOX_SIZE, -SKYBOX_SIZE);
+	glEnd();
+
+	// Render the left quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex3f(SKYBOX_SIZE, -SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 0);
+	glVertex3f(SKYBOX_SIZE, -SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(1, 1);
+	glVertex3f(SKYBOX_SIZE, SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(0, 1);
+	glVertex3f(SKYBOX_SIZE, SKYBOX_SIZE, SKYBOX_SIZE);
+	glEnd();
+
+	// Render the back quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex3f(-SKYBOX_SIZE, -SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 0);
+	glVertex3f(SKYBOX_SIZE, -SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 1);
+	glVertex3f(SKYBOX_SIZE, SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(0, 1);
+	glVertex3f(-SKYBOX_SIZE, SKYBOX_SIZE, SKYBOX_SIZE);
+
+	glEnd();
+
+	// Render the right quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex3f(-SKYBOX_SIZE, -SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(1, 0);
+	glVertex3f(-SKYBOX_SIZE, -SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 1);
+	glVertex3f(-SKYBOX_SIZE, SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(0, 1);
+	glVertex3f(-SKYBOX_SIZE, SKYBOX_SIZE, -SKYBOX_SIZE);
+	glEnd();
+
+	// Render the top quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 1);
+	glVertex3f(-SKYBOX_SIZE, SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(0, 0);
+	glVertex3f(-SKYBOX_SIZE, SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 0);
+	glVertex3f(SKYBOX_SIZE, SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 1);
+	glVertex3f(SKYBOX_SIZE, SKYBOX_SIZE, -SKYBOX_SIZE);
+	glEnd();
+
+	// Render the bottom quad
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex3f(-SKYBOX_SIZE, -SKYBOX_SIZE, -SKYBOX_SIZE);
+	glTexCoord2f(0, 1);
+	glVertex3f(-SKYBOX_SIZE, -SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 1);
+	glVertex3f(SKYBOX_SIZE, -SKYBOX_SIZE, SKYBOX_SIZE);
+	glTexCoord2f(1, 0);
+	glVertex3f(SKYBOX_SIZE, -SKYBOX_SIZE, -SKYBOX_SIZE);
+	glEnd();
+
+	// Restore enable bits and matrix
+	glPopAttrib();
+	glPopMatrix();
+}
+
 void Q3Map::render() {
+	renderSkybox();
+
 	std::vector<int> visibleFaces = findVisibleFaces();
 	std::vector<int> opaqueFaces;
 	std::vector<int> transparentFaces;
