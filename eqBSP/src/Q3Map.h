@@ -15,7 +15,7 @@
 class Q3Map {
 private:
 	TMapQ3 _map;
-	Camera _camera;
+	Camera *_camera;
 
 	TVertex *_vertices;
 	int *_meshVertices;
@@ -24,14 +24,8 @@ private:
 	GLuint *_lightmaps;
 	GLuint _whiteTexture; //used if no lightmap specified
 
-	struct Colors {
-		float r;
-		float g;
-		float b;
-		float a;
-	};
+	GLuint _skyTexture;
 
-	Colors *_facesColors;
 
 	// Walks the BSP tree until a leaf is found and returns the leaf index
 	int findLeaf() const;
@@ -64,8 +58,11 @@ private:
 
 	void renderFaces(std::vector<int> faces);
 
+	// Renders the Skybox
+	void renderSkybox();
+
 public:
-	Q3Map(const std::string& filepath, Camera &camera);
+	Q3Map(const std::string& filepath, Camera *camera);
 	virtual ~Q3Map();
 
 	// Render the map

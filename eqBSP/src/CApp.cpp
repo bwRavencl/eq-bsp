@@ -11,13 +11,18 @@
 #define HEAD_SENSITIVITY 3.0f
 #define MOVEMENT_SPEED 4.0f
 
+#define SKYBOX_SIZE 4096.0f
+
 #include "CApp.h"
 #include "Utilities/OpenGLExtensions.h"
+#include "Utilities/TextureLoader.h"
 
 CApp::CApp() {
+	_filePath = "/home/matteo/tmp/baseq3a/maps/q3dm1.bsp";
+
 	_running = true;
 
-	Surf_Display = NULL;
+	_surfDisplay = NULL;
 
 	_map = NULL;
 	_camera = NULL;
@@ -35,6 +40,7 @@ CApp::CApp() {
 	_moveDown = false;
 
 	_wireframeEnabled = false;
+	_textureMode = TEXTURES_AND_LIGHTMAPS;
 }
 
 bool CApp::OnInit() {
@@ -42,13 +48,14 @@ bool CApp::OnInit() {
 		return false;
 	}
 
-	if ((Surf_Display = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32,
+	if ((_surfDisplay = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32,
 			SDL_HWSURFACE | SDL_OPENGL)) == NULL) {
 		return false;
 	}
 
-	if(!prepareOpenGLExtensions()) {
-		std::cout << "Error: Required OpenGL extensions not supported!" << std::endl;
+	if (!prepareOpenGLExtensions()) {
+		std::cout << "ERROR: Required OpenGL extensions not supported!"
+				<< std::endl;
 		return false;
 	}
 
@@ -58,7 +65,8 @@ bool CApp::OnInit() {
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(75.0f, (GLfloat) WINDOW_WIDTH / (GLfloat) WINDOW_HEIGHT, 0.1f, 10000.0f);
+	gluPerspective(75.0f, (GLfloat) WINDOW_WIDTH / (GLfloat) WINDOW_HEIGHT,
+			0.1f, 10000.0f);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -78,7 +86,7 @@ bool CApp::OnInit() {
 	glEnable(GL_CULL_FACE);
 
 	_camera = new Camera();
-	_map = new Q3Map("/home/matteo/tmp/baseq3a/maps/q3dm17.bsp", *_camera);
+	_map = new Q3Map(_filePath, _camera);
 
 	return true;
 }
@@ -110,7 +118,7 @@ void CApp::OnEvent(SDL_Event* event) {
 		if (event->key.keysym.sym == SDLK_PAGEDOWN)
 			_moveDown = true;
 
-		// Turn wireframe on and off
+		// Turn wireframe mode on and off
 		if (event->key.keysym.sym == SDLK_m) {
 			_wireframeEnabled = !_wireframeEnabled;
 
@@ -118,6 +126,17 @@ void CApp::OnEvent(SDL_Event* event) {
 				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 			else
 				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		}
+
+		// Switch between texture and lightmap rendering modes
+		if (event->key.keysym.sym == SDLK_t) {
+
+			if (_textureMode == TEXTURES_AND_LIGHTMAPS)
+				_textureMode = TEXTURES_ONLY;
+			else if (_textureMode == TEXTURES_ONLY)
+				_textureMode = LIGHTMAPS_ONLY;
+			else
+				_textureMode = TEXTURES_AND_LIGHTMAPS;
 		}
 
 		if (event->key.keysym.sym == SDLK_ESCAPE) {
@@ -182,6 +201,7 @@ void CApp::OnLoop() {
 
 void CApp::OnRender() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	glLoadIdentity();
 
 	_camera->render();
@@ -197,8 +217,8 @@ void CApp::OnRender() {
 	glActiveTextureARB(GL_TEXTURE1_ARB);
 	glEnable(GL_TEXTURE_2D);
 
-//	if(renderMethod==MODULATE_TEXTURES)	//Then modulate by lightmap, then double
-//	{
+	if (_textureMode == TEXTURES_AND_LIGHTMAPS)	//Then modulate by lightmap, then double
+			{
 		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
 
 		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_PREVIOUS_EXT);
@@ -210,27 +230,27 @@ void CApp::OnRender() {
 		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_RGB_EXT, GL_SRC_COLOR);
 
 		glTexEnvf(GL_TEXTURE_ENV, GL_RGB_SCALE_EXT, 2.0f);
-//	}
-//
-//	if(renderMethod==SHOW_TEXTURES)	//Then replace with previous
-//	{
-//		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
-//
-//		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_PREVIOUS_EXT);
-//		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
-//
-//		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_REPLACE);
-//	}
-//
-//	if(renderMethod==SHOW_LIGHTMAPS)//Then replace with lightmaps
-//	{
-//		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
-//
-//		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_TEXTURE);
-//		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
-//
-//		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_REPLACE);
-//	}
+	}
+
+	if (_textureMode == TEXTURES_ONLY)	//Then replace with previous
+			{
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_PREVIOUS_EXT);
+		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_REPLACE);
+	}
+
+	if (_textureMode == LIGHTMAPS_ONLY)	//Then replace with lightmaps
+			{
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE_EXT);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE0_RGB_EXT, GL_TEXTURE);
+		glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_RGB_EXT, GL_SRC_COLOR);
+
+		glTexEnvi(GL_TEXTURE_ENV, GL_COMBINE_RGB_EXT, GL_REPLACE);
+	}
 
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 
