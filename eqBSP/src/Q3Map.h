@@ -54,7 +54,7 @@ private:
 	void renderMesh(TFace face);
 
 	// Renders a Patch
-	void renderPatch(TFace face);
+	void renderPatch(TFace face, const int tesselationLevel);
 
 	void renderFaces(std::vector<int> faces);
 

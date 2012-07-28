@@ -18,7 +18,7 @@
 #include "Utilities/TextureLoader.h"
 
 CApp::CApp() {
-	_filePath = "/home/matteo/tmp/baseq3a/maps/q3dm1.bsp";
+	_filePath = "/home/matteo/tmp/baseq3a/maps/q3dm17.bsp";
 
 	_running = true;
 
