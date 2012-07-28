@@ -14,6 +14,8 @@
 #define MESH 3
 #define BILLBOARD 4
 
+#define TESSELATION_LEVEL 10
+
 #include "Q3Map.h"
 #include "Utilities/MathUtils.h"
 #include "Utilities/OpenGLExtensions.h"
@@ -204,11 +206,11 @@ bool Q3Map::isInFrontOf(const int faceIndexA, const int faceIndexB) {
 }
 
 void Q3Map::sortFaces(std::vector<int> faces, bool backToFront) {
-// We need to use a specialized boost functor, to access the non-static predicate function
+	// We need to use a specialized boost functor, to access the non-static predicate function
 	std::sort(faces.begin(), faces.end(),
 			boost::bind(&Q3Map::isInFrontOf, this, _1, _2));
 
-// Reverse order if requested
+	// Reverse order if requested
 	if (backToFront) {
 		faces.reserve(faces.size());
 	}
@@ -221,24 +223,24 @@ void Q3Map::renderPolygon(TFace face) {
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 	const int offset = face.mVertex; // Index of first vertex
 
-// Set array pointers
-// Vertices
+	// Set array pointers
+	// Vertices
 	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[0].mPosition));
 
-// Texture
+	// Texture
 	glTexCoordPointer(2, GL_FLOAT, stride, &_vertices[0].mTexCoord[0]);
 
-// Lightmap
+	// Lightmap
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 	glTexCoordPointer(2, GL_FLOAT, stride, &_vertices[0].mTexCoord[1]);
 	glClientActiveTextureARB(GL_TEXTURE0_ARB);
 
-// Bind textures
-// Texture
+	// Bind textures
+	// Texture
 	if (_textures[face.mTextureIndex])
 		glBindTexture(GL_TEXTURE_2D, _textures[face.mTextureIndex]);
 
-// Lightmap
+	// Lightmap
 	glActiveTextureARB(GL_TEXTURE1_ARB);
 	if (face.mLightmapIndex >= 0)	//only bind a lightmap if one exists
 		glBindTexture(GL_TEXTURE_2D, _lightmaps[face.mLightmapIndex]);
@@ -247,7 +249,7 @@ void Q3Map::renderPolygon(TFace face) {
 
 	glActiveTextureARB(GL_TEXTURE0_ARB);
 
-// Draw face
+	// Draw face
 	glDrawArrays(GL_TRIANGLE_FAN, offset, face.mNbVertices);
 }
 
@@ -257,26 +259,26 @@ void Q3Map::renderMesh(TFace face) {
 
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 
-// Set array pointers
-// Vertices
+	// Set array pointers
+	// Vertices
 	glVertexPointer(3, GL_FLOAT, stride, &(_vertices[face.mVertex].mPosition));
 
-// Texture
+	// Texture
 	glTexCoordPointer(2, GL_FLOAT, stride,
 			&_vertices[face.mVertex].mTexCoord[0]);
 
-// Lightmap
+	// Lightmap
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 	glTexCoordPointer(2, GL_FLOAT, stride,
 			&_vertices[face.mVertex].mTexCoord[1]);
 	glClientActiveTextureARB(GL_TEXTURE0_ARB);
 
-// Bind textures
-// Texture
+	// Bind textures
+	// Texture
 	if (_textures[face.mTextureIndex])
 		glBindTexture(GL_TEXTURE_2D, _textures[face.mTextureIndex]);
 
-// Lightmap
+	// Lightmap
 	glActiveTextureARB(GL_TEXTURE1_ARB);
 	if (face.mLightmapIndex >= 0)	//only bind a lightmap if one exists
 		glBindTexture(GL_TEXTURE_2D, _lightmaps[face.mLightmapIndex]);
@@ -293,45 +295,59 @@ void Q3Map::renderMesh(TFace face) {
 			(const void**) (&_meshVertices[face.mMeshVertex]));
 }
 
-void Q3Map::renderPatch(TFace face) {
+void Q3Map::renderPatch(TFace face, const int tesselationLevel) {
 	if (_textures[face.mTextureIndex] == false)
 		return;
 
 	static const int stride = sizeof(TVertex); // BSP Vertex, not float[3]
 
-	// Teseselate
+	// Tesselate
 
-	const int level = 5;
+	// Tesselation-Level
+	const int level = tesselationLevel;
 
-// The number of vertices along a side is 1 + num edges
-	const int l1 = level + 1;
+	float px, py;
 
-	TVertex vertices[l1 * l1];
+	// The number of vertices along a side is 1 + num edges
+	const int level1 = level + 1;
 
-	int i;
+	TVertex *vertices = new TVertex[level1 * level1];
 
 	TVertex controls[9];
 
-// Gather controls
+	int i;
+
+	// Gather controls
 	for (i = 0; i < face.mNbVertices; ++i) {
 		controls[i] = _vertices[face.mVertex + i];
 	}
 
-// Compute the vertices
+	for (int v = 0; v <= level; ++v) {
+		px = (float) v / level;
 
+		vertices[v] = vertexAddition(
+				vertexAddition(
+						vertexMultiplication(controls[0],
+								((1.0f - px) * (1.0f - px))),
+						vertexMultiplication(controls[3],
+								((1.0f - px) * px * 2))),
+				vertexMultiplication(controls[6], (px * px)));
+	}
+
+	// Compute the vertices
 	for (i = 0; i <= level; ++i) {
-		double a = (double) i / level;
-		double b = 1 - a;
+		px = (float) i / level;
+		py = 1.0f - px;
 
 		vertices[i] = vertexAddition(
-				vertexAddition(vertexMultiplication(controls[0], (b * b)),
-						vertexMultiplication(controls[3], (2 * b * a))),
-				vertexMultiplication(controls[6], (a * a)));
+				vertexAddition(vertexMultiplication(controls[0], (py * py)),
+						vertexMultiplication(controls[3], (2 * py * px))),
+				vertexMultiplication(controls[6], (px * px)));
 	}
 
 	for (i = 1; i <= level; ++i) {
-		double a = (double) i / level;
-		double b = 1.0 - a;
+		px = (float) i / level;
+		py = 1.0f - px;
 
 		TVertex temp[3];
 
@@ -340,30 +356,31 @@ void Q3Map::renderPatch(TFace face) {
 			int k = 3 * j;
 			temp[j] = vertexAddition(
 					vertexAddition(
-							vertexMultiplication(controls[k + 0], (b * b)),
-							vertexMultiplication(controls[k + 1], (2 * b * a))),
-					vertexMultiplication(controls[k + 2], (a * a)));
+							vertexMultiplication(controls[k + 0], (py * py)),
+							vertexMultiplication(controls[k + 1],
+									(2 * py * px))),
+					vertexMultiplication(controls[k + 2], (px * px)));
 		}
 
 		for (j = 0; j <= level; ++j) {
-			double a = (double) j / level;
-			double b = 1.0 - a;
+			px = (float) j / level;
+			py = 1.0f - px;
 
-			vertices[i * l1 + j] = vertexAddition(
-					vertexAddition(vertexMultiplication(temp[0], (b * b)),
-							vertexMultiplication(temp[1], (2 * b * a))),
-					vertexMultiplication(temp[2], (a * a)));
+			vertices[i * level1 + j] = vertexAddition(
+					vertexAddition(vertexMultiplication(temp[0], (py * py)),
+							vertexMultiplication(temp[1], (2 * py * px))),
+					vertexMultiplication(temp[2], (px * px)));
 		}
 	}
 
-// Compute the indices
+	// Compute the indices
 	int row;
 	int indices[(level * (level + 1) * 2)];
 
 	for (row = 0; row < level; ++row) {
 		for (int col = 0; col <= level; ++col) {
-			indices[(row * (level + 1) + col) * 2 + 1] = row * l1 + col;
-			indices[(row * (level + 1) + col) * 2] = (row + 1) * l1 + col;
+			indices[(row * (level + 1) + col) * 2 + 1] = row * level1 + col;
+			indices[(row * (level + 1) + col) * 2] = (row + 1) * level1 + col;
 		}
 	}
 
@@ -371,17 +388,37 @@ void Q3Map::renderPatch(TFace face) {
 	int *rowIndices[level];
 
 	for (row = 0; row < level; ++row) {
-		trianglesPerRow[row] = 2 * l1;
-		rowIndices[row] = &indices[row * 2 * l1];
+		trianglesPerRow[row] = 2 * level1;
+		rowIndices[row] = &indices[row * 2 * level1];
 	}
 
 	glVertexPointer(3, GL_FLOAT, stride, &vertices[0].mPosition);
 
-	glClientActiveTextureARB(GL_TEXTURE0_ARB);
-	//glTexCoordPointer(2, GL_FLOAT, stride, &vertices[0].mTexCoord[0]); // Texture
+	glTexCoordPointer(2, GL_FLOAT, stride, &vertices[0].mTexCoord[0]); // Texture
 
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);
-	//glTexCoordPointer(2, GL_FLOAT, stride, &vertices[0].mTexCoord[1]); // Lightmap
+	glTexCoordPointer(2, GL_FLOAT, stride, &vertices[0].mTexCoord[1]); // Lightmap
+	glClientActiveTextureARB(GL_TEXTURE0_ARB);
+
+	// Bind textures
+	// Texture
+	if (_textures[face.mTextureIndex])
+		glBindTexture(GL_TEXTURE_2D, _textures[face.mTextureIndex]);
+
+	// Lightmap
+	glActiveTextureARB(GL_TEXTURE1_ARB);
+	if (face.mLightmapIndex >= 0)	//only bind a lightmap if one exists
+		glBindTexture(GL_TEXTURE_2D, _lightmaps[face.mLightmapIndex]);
+	else
+		glBindTexture(GL_TEXTURE_2D, _whiteTexture);
+
+	glActiveTextureARB(GL_TEXTURE0_ARB);
+
+//	for(int row=0; row<level; ++row)
+//	{
+//		glDrawElements(	GL_TRIANGLE_STRIP, 2*(level+1), GL_UNSIGNED_INT,
+//						&indices[row*2*(level+1)]);
+//	}
 
 	glMultiDrawElementsEXT(GL_TRIANGLE_STRIP, trianglesPerRow, GL_UNSIGNED_INT,
 			(const void **) (rowIndices), level);
@@ -403,7 +440,7 @@ void Q3Map::renderFaces(std::vector<int> faces) {
 			renderMesh(curFace);
 			break;
 		case PATCH:
-			renderPatch(curFace);
+			renderPatch(curFace, TESSELATION_LEVEL);
 			break;
 		case BILLBOARD:
 			break;
@@ -526,38 +563,38 @@ void Q3Map::render() {
 	std::vector<int> transparentFaces;
 	std::vector<int>::iterator it;
 
-// Partition visible faces in opaque and transparent lists
+	// Partition visible faces in opaque and transparent lists
 	for (it = visibleFaces.begin(); it != visibleFaces.end(); ++it) {
 		//curFace = _map.mFaces.at((*it));
 		// TODO do actual check for opacity or transparency
 		opaqueFaces.push_back(*it);
 	}
 
-// Sort opaque faces front to back
+	// Sort opaque faces front to back
 	sortFaces(opaqueFaces, false);
 
-// Sort transparent faces back to front
+	// Sort transparent faces back to front
 	sortFaces(transparentFaces, true);
 
-// Turn whole map, so that it is positioned in the right way
+	// Turn whole map, so that it is positioned in the right way
 	glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
 
 	glFrontFace(GL_CW);
 
-// Enable vertex arrays
+	// Enable vertex arrays
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	glClientActiveTextureARB(GL_TEXTURE0_ARB);
 
-// Render opaque faces
+	// Render opaque faces
 	renderFaces(opaqueFaces);
 
-// Render transparent faces
+	// Render transparent faces
 	renderFaces(transparentFaces);
 
-// Disable vertex arrays
+	// Disable vertex arrays
 	glClientActiveTextureARB(GL_TEXTURE1_ARB);
 	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 	glClientActiveTextureARB(GL_TEXTURE0_ARB);

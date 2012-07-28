@@ -21,15 +21,18 @@ Matrix4 worldToCameraSpace(Matrix4 modelMatrix, Matrix4 viewMatrix) {
 TVertex vertexAddition(TVertex a, TVertex b) {
 	TVertex result;
 
-	for(int i = 0; i < 2; i++)
-		result.mPosition[i] = a.mPosition[i] + b.mPosition[i];
+	int i;
 
-	// TODO Do missing additions:
-//	result.position=position+rhs.position;
-//	result.decalS=decalS+rhs.decalS;
-//	result.decalT=decalT+rhs.decalT;
-//	result.lightmapS=lightmapS+rhs.lightmapS;
-//	result.lightmapT=lightmapT+rhs.lightmapT;
+	for (i = 0; i < 3; i++) {
+		result.mPosition[i] = a.mPosition[i] + b.mPosition[i];
+		result.mNormal[i] = a.mNormal[i] + b.mNormal[i];
+	}
+
+	for (int j = 0; j < 2; j++) {
+		for (i = 0; i < 2; i++) {
+			result.mTexCoord[i][j] = a.mTexCoord[i][j] + b.mTexCoord[i][j];
+		}
+	}
 
 	return result;
 }
@@ -38,15 +41,18 @@ TVertex vertexAddition(TVertex a, TVertex b) {
 TVertex vertexMultiplication(TVertex v, float f) {
 	TVertex result;
 
-	for(int i = 0; i < 2; i++)
-		result.mPosition[i] = v.mPosition[i] * f;
+	int i;
 
-	// TODO Do missing multiplications:
-//	result.position=position*rhs;
-//	result.decalS=decalS*rhs;
-//	result.decalT=decalT*rhs;
-//	result.lightmapS=lightmapS*rhs;
-//	result.lightmapT=lightmapT*rhs;
+	for (i = 0; i < 3; i++) {
+		result.mPosition[i] = v.mPosition[i] * f;
+		result.mNormal[i] = v.mNormal[i] * f;
+	}
+
+	for (int j = 0; j < 2; j++) {
+		for (i = 0; i < 2; i++) {
+			result.mTexCoord[i][j] = v.mTexCoord[i][j] * f;
+		}
+	}
 
 	return result;
 }
