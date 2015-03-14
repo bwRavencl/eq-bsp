@@ -1,0 +1,1 @@
+Allows to view Quake 3 BSP maps in a distributed rendering environment.
